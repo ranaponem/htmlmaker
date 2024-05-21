@@ -1,4 +1,4 @@
 *.csv
-./output/*
-./.vscode/*
 htmlmaker
+.vscode/*
+output/*

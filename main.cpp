@@ -10,6 +10,7 @@ void error(int errorCode, std::string text);
 void printHelp();
 void init(std::string filename);
 bool travelToEnd(int fd);
+std::string getCsvContent(int htmlFd, int csvFd, std::string tableName);
 void makeTableFromCSV(std::string htmlFile, std::string csvFile, std::string tableName);
 
 int main(int argc, char const *argv[])
@@ -112,13 +113,52 @@ bool travelToEnd(int fd){
         read(fd, buffer, 7);
         buffer[7] = '\0';
         if(strcmp(buffer, "</body>") == 0){
-            lseek(fd, -7, SEEK_CUR);
+            lseek(fd, -8, SEEK_CUR);
             return true;
         }
         position = lseek(fd, -8, SEEK_CUR);
     }while(position >= 0);
 
     return false;
+}
+
+/**
+ * @name getCsvContent
+ * 
+ * @param fd File descriptor of CSV file
+ * @param tableName Name to be given to the table. Will be used as ID
+ * 
+ * @returns A vector of vectors of strings describing the CSV file's content
+*/
+std::string getCsvContent(int htmlFd, int csvFd, std::string tableName){
+    std::string output = "\t<h1>";
+    output.append(tableName);
+    output.append("</h1>\n");
+    std::string content = "\t<tr><th>";
+    char cur[1025];
+    ssize_t bytes;
+
+    while((bytes = read(csvFd, cur, 1024)) != 0){
+        cur[bytes] = '\0';
+        content.append(cur);
+    }
+
+    output.append(content);
+
+    //Travel to the end of the html file
+    if(!travelToEnd(htmlFd))
+        error(EOF_NOT_FOUND,"Couldn't find the end of the HTML file given: no '</body>' tag");
+    off_t pos = lseek(htmlFd, 0, SEEK_CUR);
+
+    //Save end of file
+    while((bytes = read(htmlFd, cur, 1024)) != 0){
+        cur[bytes] = '\0';
+        output.append(cur);
+    }
+
+    lseek(htmlFd, pos, SEEK_SET);
+
+    return output;
 }
 
 /**
@@ -132,7 +172,7 @@ void makeTableFromCSV(std::string htmlFile, std::string csvFile, std::string tab
     //Open html file
     std::string completeHtmlFilename = "./output/";
     completeHtmlFilename.append(htmlFile);
-    int htmlFd = open(completeHtmlFilename.c_str(), O_RDWR|O_APPEND);
+    int htmlFd = open(completeHtmlFilename.c_str(), O_RDWR);
     if(htmlFd == -1)
         error(FILE_DOESNT_EXIST, "Given HTML file doesn't exist at './output'. You can create it using htmlmaker init.");
 
@@ -141,9 +181,12 @@ void makeTableFromCSV(std::string htmlFile, std::string csvFile, std::string tab
     if(csvFd == -1)
         error(FILE_DOESNT_EXIST, "Given CSV file doesn't exist.");
 
-    //Travel to the end of the html file
-    if(!travelToEnd(htmlFd))
-        error(EOF_NOT_FOUND,"Couldn't find the end of the HTML file given: no '</body>' tag");
+    //Process csv file
+    std::string csvContent = getCsvContent(htmlFd, csvFd, tableName);
 
-    
+    //Write CSV table and end of file
+    write(htmlFd, csvContent.c_str(), csvContent.length());
+
+    close(htmlFd);
+    close(csvFd);
 }
